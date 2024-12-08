@@ -139,7 +139,7 @@ def q_5_2():
             data.append({
                 "Batch size": batch_size,
                 "Learning rate": learning_rate,
-                "Eval avergae return": returns[-1]
+                "Eval average return": returns[-1]
             })
 
             ax.plot(steps, returns, label=f"lr={learning_rate}, bs={batch_size}")
@@ -150,18 +150,18 @@ def q_5_2():
     ax.legend()
 
     fig.tight_layout()
-    fig.savefig('report_sources/q_5_2_learning_curves.jpg')
+    fig.savefig('report_resources/q_5_2_learning_curves.jpg')
 
     df = pd.DataFrame(data)
 
-    pivot_df = df.pivot(index='Learning rate', columns='Batch size', value='Eval average return')
+    pivot_df = df.pivot(index='Learning rate', columns='Batch size', values='Eval average return')
 
     fig, ax = plt.subplots(figsize=(10, 8))
-    sns.heatmap(pivot_df, ax=ax, annot=True)
+    sns.heatmap(pivot_df, ax=ax, annot=True, fmt='.0f')
 
     ax.set_title("Final eval average return of hyperparameter tuning over learning rate and batch size")
     fig.tight_layout()
-    fig.savefig("report_sources/q_5_2_heatmap.jpg")
+    fig.savefig("report_resources/q_5_2_heatmap.jpg")
 
 if __name__ == "__main__":
     q_5_2()
