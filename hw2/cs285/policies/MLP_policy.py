@@ -1,15 +1,18 @@
 import abc
 import itertools
 from torch import nn
+from torch.distributions.utils import logits_to_probs
 from torch.nn import functional as F
 from torch import optim
 
 import numpy as np
 import torch
 from torch import distributions
+from typing import Any, cast
 
 from cs285.infrastructure import pytorch_util as ptu
 from cs285.policies.base_policy import BasePolicy
+import cs285.infrastructure.utils as utils
 
 
 class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
@@ -86,7 +89,19 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
 
     # query the policy with observation(s) to get selected action(s)
     def get_action(self, obs: np.ndarray) -> np.ndarray:
-        # TODO: get this from HW1
+        if len(obs.shape) > 1:
+            observation = obs
+        else:
+            observation = obs[None]
+
+        # TODO return the action that the policy prescribes
+        obs_pt = ptu.from_numpy(obs)
+        action_pt = self.forward(obs_pt).sample()
+        action = ptu.to_numpy(action_pt)
+        # For action and advantage dim matching
+        if self.discrete:
+            action = action[None]
+        return action
 
     # update/train this policy
     def update(self, observations, actions, **kwargs):
@@ -103,15 +118,21 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
             action_distribution = distributions.Categorical(logits=logits)
             return action_distribution
         else:
-            batch_mean = self.mean_net(observation)
-            scale_tril = torch.diag(torch.exp(self.logstd))
-            batch_dim = batch_mean.shape[0]
-            batch_scale_tril = scale_tril.repeat(batch_dim, 1, 1)
-            action_distribution = distributions.MultivariateNormal(
-                batch_mean,
-                scale_tril=batch_scale_tril,
+            # batch_mean = self.mean_net(observation)
+            # scale_tril = torch.diag(torch.exp(self.logstd))
+            # batch_dim = batch_mean.shape[0]
+            # batch_scale_tril = scale_tril.repeat(batch_dim, 1, 1)
+            # action_distribution = distributions.MultivariateNormal(
+            #     batch_mean,
+            #     scale_tril=batch_scale_tril,
+            # )
+            # return action_distribution
+            assert self.logstd is not None
+            return distributions.Normal(
+                self.mean_net(observation),
+                torch.exp(self.logstd)[None],
             )
-            return action_distribution
+
 
 #####################################################
 #####################################################
@@ -134,7 +155,24 @@ class MLPPolicyPG(MLPPolicy):
         # HINT2: you will want to use the `log_prob` method on the distribution returned
             # by the `forward` method
 
-        TODO
+        # Retrieve the relevant func
+        optimizer = self.optimizer
+
+        action_distribution = self.forward(observations)
+        # Given actions, return the log_prob of the actions
+        log_probs: torch.Tensor = action_distribution.log_prob(actions)
+        # For continuous space, the shape of returned log_prob is [batch_size, action_dim]
+        # sum over action_dim (1), you get the log_prob that a sample will do the "overall" action
+        # (Because it is multivariateNormal)
+        if not self.discrete:
+            log_probs = log_probs.sum(1)
+        assert log_probs.size() == advantages.size()
+        # The sum of product is negative, but we are minimizing the loss, so negate it
+        loss = -(log_probs * advantages).sum()
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
         if self.nn_baseline:
             ## TODO: update the neural network baseline using the q_values as
@@ -144,11 +182,25 @@ class MLPPolicyPG(MLPPolicy):
             ## Note: You will need to convert the targets into a tensor using
                 ## ptu.from_numpy before using it in the loss
 
-            TODO
+            baseline_optimizer = self.baseline_optimizer
+            baseline_loss_fn = self.baseline_loss
+            baseline = self.baseline
+            baseline_optimizer.zero_grad()
+
+            q_values_norm = utils.normalize(q_values, np.mean(q_values), np.std(q_values))
+            q_values_norm_pt = ptu.from_numpy(q_values_norm)
+
+            baseline_output = baseline(observations).squeeze()
+            baseline_loss = baseline_loss_fn(q_values_norm_pt, baseline_output)
+
+            baseline_loss.backward()
+            baseline_optimizer.step()
 
         train_log = {
             'Training Loss': ptu.to_numpy(loss),
         }
+        if self.nn_baseline:
+            train_log['Baseline Loss'] = baseline_loss
         return train_log
 
     def run_baseline_prediction(self, observations):
