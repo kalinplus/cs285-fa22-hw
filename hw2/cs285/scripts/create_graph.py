@@ -163,5 +163,36 @@ def q_5_2():
     fig.tight_layout()
     fig.savefig("report_resources/q_5_2_heatmap.jpg")
 
+def q_7_3():
+    batch_sizes = [40000]
+    learning_rates = [0.005]
+    prefix_template = 'q2_pg_q3_b{batch_size}_r{learning_rate}'
+
+    rows, cols = 1, 1
+    fig, ax = plt.subplots(rows, cols, (10 * rows, 8 * cols))
+
+
+    for batch_size in batch_sizes:
+        for learning_rate in learning_rates:
+            experiment_prefix = prefix_template.format(
+                batch_size=batch_size, learning_ratee=learning_rate
+            )
+
+            steps, returns = get_eval_averagereturns(experiment_prefix)
+
+            ax.plot(steps, returns, label=f"lr: {learning_rate}, bs: {batch_size}")
+
+
+
+        ax.set_title("LunarLanderContinuous: learning rate vs batch size")
+        ax.set_xlabel("Training steps")
+        ax.set_ylabel("Eval average returns")
+        ax.legend()
+
+    fig.tight_layout()
+    fig.savefig("report_resources/q_7_3_learning_curve.jpg")
+
+
 if __name__ == "__main__":
-    q_5_2()
+    # q_5_2()
+    ...
