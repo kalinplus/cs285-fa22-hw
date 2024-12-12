@@ -11,6 +11,8 @@ from torch import distributions
 from cs285.infrastructure import pytorch_util as ptu
 from cs285.policies.base_policy import BasePolicy
 
+from cs285.infrastructure.utils import normalize
+
 
 class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
 
@@ -87,6 +89,14 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
     # query the policy with observation(s) to get selected action(s)
     def get_action(self, obs: np.ndarray) -> np.ndarray:
         # TODO: get this from HW1
+        if len(obs.shape) > 1:
+            observation = obs
+        else:
+            observation = obs[None]
+
+        # TODO return the action that the policy prescribes
+        action_distribution = self.forward(ptu.from_numpy(observation))
+        return ptu.to_numpy(action_distribution.sample())
 
     # update/train this policy
     def update(self, observations, actions, **kwargs):
@@ -97,6 +107,8 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
     # through it. For example, you can return a torch.FloatTensor. You can also
     # return more flexible objects, such as a
     # `torch.distributions.Distribution` object. It's up to you!
+
+    # This forward implements the policy network. It generates acs dist given the obs
     def forward(self, observation: torch.FloatTensor):
         if self.discrete:
             logits = self.logits_na(observation)
@@ -123,6 +135,7 @@ class MLPPolicyPG(MLPPolicy):
         self.baseline_loss = nn.MSELoss()
 
     def update(self, observations, actions, advantages, q_values=None):
+        # All params are tensors now
         observations = ptu.from_numpy(observations)
         actions = ptu.from_numpy(actions)
         advantages = ptu.from_numpy(advantages)
@@ -134,7 +147,16 @@ class MLPPolicyPG(MLPPolicy):
         # HINT2: you will want to use the `log_prob` method on the distribution returned
             # by the `forward` method
 
-        TODO
+        optimizer = self.optimizer
+        optimizer.zero_grad()
+        # Policy network forward(obs) gives the action distribution
+        # log_prob(acs) return the log prob, also log(\pi(a|s))
+        log_pi = self.forward(observations).log_prob(actions)
+        # loss = torch.neg(torch.mean(torch.mul(log_pi, advantages))) # also ok
+        loss = torch.neg(torch.mean(log_pi * advantages))
+
+        loss.backward()
+        optimizer.step()
 
         if self.nn_baseline:
             ## TODO: update the neural network baseline using the q_values as
@@ -144,7 +166,15 @@ class MLPPolicyPG(MLPPolicy):
             ## Note: You will need to convert the targets into a tensor using
                 ## ptu.from_numpy before using it in the loss
 
-            TODO
+            self.baseline_optimizer.zero_grad()
+
+            target = ptu.from_numpy(normalize(q_values, np.mean(q_values), np.std(q_values)))
+            # baseline is a value network, given obs input, and output state values
+            output = self.baseline(observations)
+            baseline_loss = self.baseline_loss_fn(output, target)
+
+            baseline_loss.backward()
+            self.baseline_optimizer.step()
 
         train_log = {
             'Training Loss': ptu.to_numpy(loss),
