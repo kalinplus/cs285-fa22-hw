@@ -168,7 +168,7 @@ class MLPPolicyPG(MLPPolicy):
             target = ptu.from_numpy(normalize(q_values, np.mean(q_values), np.std(q_values)))
             # baseline is a value network, given obs input, and output state values
             output = self.baseline(observations).squeeze()
-            baseline_loss = self.baseline_loss_fn(output, target)
+            baseline_loss = self.baseline_loss(output, target)
 
             self.baseline_optimizer.zero_grad()
             baseline_loss.backward()
