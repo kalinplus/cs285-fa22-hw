@@ -147,16 +147,15 @@ class MLPPolicyPG(MLPPolicy):
         # HINT2: you will want to use the `log_prob` method on the distribution returned
             # by the `forward` method
 
-        optimizer = self.optimizer
-        optimizer.zero_grad()
         # Policy network forward(obs) gives the action distribution
         # log_prob(acs) return the log prob, also log(\pi(a|s))
         log_pi = self.forward(observations).log_prob(actions)
         # loss = torch.neg(torch.mean(torch.mul(log_pi, advantages))) # also ok
-        loss = torch.neg(torch.mean(log_pi * advantages))
+        loss = torch.neg(torch.mean(torch.mul(log_pi, advantages)))
 
+        self.optimizer.zero_grad()
         loss.backward()
-        optimizer.step()
+        self.optimizer.step()
 
         if self.nn_baseline:
             ## TODO: update the neural network baseline using the q_values as
@@ -166,13 +165,12 @@ class MLPPolicyPG(MLPPolicy):
             ## Note: You will need to convert the targets into a tensor using
                 ## ptu.from_numpy before using it in the loss
 
-            self.baseline_optimizer.zero_grad()
-
             target = ptu.from_numpy(normalize(q_values, np.mean(q_values), np.std(q_values)))
             # baseline is a value network, given obs input, and output state values
-            output = self.baseline(observations)
+            output = self.baseline(observations).squeeze()
             baseline_loss = self.baseline_loss_fn(output, target)
 
+            self.baseline_optimizer.zero_grad()
             baseline_loss.backward()
             self.baseline_optimizer.step()
 
